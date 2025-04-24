@@ -113,3 +113,19 @@ harness = false
 [[bench]]
 name = "join_benchmark"
 harness = false
+
+[[bench]]
+name = "aggregate_benchmark"
+harness = false
+
+[[bench]]
+name = "concurrency_benchmark"
+harness = false
+
+[[bench]]
+name = "text_benchmark"
+harness = false
+
+[[bench]]
+name = "transaction_benchmark"
+harness = false
