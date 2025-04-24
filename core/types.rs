@@ -1,5 +1,6 @@
 use limbo_ext::{AggCtx, FinalizeFunction, StepFunction};
 use limbo_sqlite3_parser::ast::SortOrder;
+use smallvec::SmallVec;
 
 use crate::error::LimboError;
 use crate::ext::{ExtValue, ExtValueType};
@@ -48,7 +49,8 @@ pub enum TextSubtype {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Text {
-    pub value: Vec<u8>,
+    pub value: smallvec::SmallVec<[u8; 48]>,
+    // pub value: Vec<u8>,
     pub subtype: TextSubtype,
 }
 
@@ -65,14 +67,14 @@ impl Text {
 
     pub fn new(value: &str) -> Self {
         Self {
-            value: value.as_bytes().to_vec(),
+            value: value.as_bytes().into(),
             subtype: TextSubtype::Text,
         }
     }
     #[cfg(feature = "json")]
     pub fn json(value: String) -> Self {
         Self {
-            value: value.into_bytes(),
+            value: value.as_bytes().into(),
             subtype: TextSubtype::Json,
         }
     }
@@ -89,7 +91,7 @@ impl Text {
 impl From<String> for Text {
     fn from(value: String) -> Self {
         Text {
-            value: value.into_bytes(),
+            value: value.as_bytes().into(),
             subtype: TextSubtype::Text,
         }
     }
@@ -111,7 +113,7 @@ pub enum OwnedValue {
     Integer(i64),
     Float(f64),
     Text(Text),
-    Blob(Vec<u8>),
+    Blob(smallvec::SmallVec<[u8; 48]>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -143,7 +145,7 @@ impl OwnedValue {
     }
 
     pub fn from_blob(data: Vec<u8>) -> Self {
-        OwnedValue::Blob(data)
+        OwnedValue::Blob(SmallVec::from_slice(&data))
     }
 
     pub fn to_text(&self) -> Option<&str> {
@@ -370,7 +372,7 @@ impl OwnedValue {
                 let Some(blob) = v.to_blob() else {
                     return Ok(OwnedValue::Null);
                 };
-                Ok(OwnedValue::Blob(blob))
+                Ok(OwnedValue::Blob(blob.into()))
             }
             ExtValueType::Error => {
                 let Some(err) = v.to_error_details() else {
@@ -972,10 +974,10 @@ impl RefValue {
             RefValue::Integer(i) => OwnedValue::Integer(*i),
             RefValue::Float(f) => OwnedValue::Float(*f),
             RefValue::Text(text_ref) => OwnedValue::Text(Text {
-                value: text_ref.value.to_slice().to_vec(),
+                value: text_ref.value.to_slice().into(),
                 subtype: text_ref.subtype.clone(),
             }),
-            RefValue::Blob(b) => OwnedValue::Blob(b.to_slice().to_vec()),
+            RefValue::Blob(b) => OwnedValue::Blob(b.to_slice().into()),
         }
     }
     pub fn to_blob(&self) -> Option<&[u8]> {
@@ -1473,7 +1475,7 @@ mod tests {
 
     #[test]
     fn test_serialize_blob() {
-        let blob = vec![1, 2, 3, 4, 5];
+        let blob = smallvec::smallvec![1, 2, 3, 4, 5];
         let record = Record::new(vec![OwnedValue::Blob(blob.clone())]);
         let mut buf = Vec::new();
         record.serialize(&mut buf);

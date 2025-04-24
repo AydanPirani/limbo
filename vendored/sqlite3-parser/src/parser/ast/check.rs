@@ -172,10 +172,8 @@ impl Stmt {
                 let Delete {
                     order_by, limit, ..
                 } = &**delete;
-                if let Some(_) = order_by {
-                    if limit.is_none() {
-                        return Err(custom_err!("ORDER BY without LIMIT on DELETE"));
-                    }
+                if order_by.is_some() && limit.is_none() {
+                    return Err(custom_err!("ORDER BY without LIMIT on DELETE"));
                 }
                 Ok(())
             }
@@ -185,7 +183,7 @@ impl Stmt {
                     return Ok(());
                 }
                 let columns = columns.as_ref().unwrap();
-                match &*body {
+                match body {
                     InsertBody::Select(select, ..) => match select.body.select.column_count() {
                         ColumnCount::Fixed(n) if n != columns.len() => {
                             Err(custom_err!("{} values for {} columns", n, columns.len()))
@@ -201,10 +199,8 @@ impl Stmt {
                 let Update {
                     order_by, limit, ..
                 } = &**update;
-                if let Some(_) = order_by {
-                    if limit.is_none() {
-                        return Err(custom_err!("ORDER BY without LIMIT on UPDATE"));
-                    }
+                if order_by.is_some() && limit.is_none() {
+                    return Err(custom_err!("ORDER BY without LIMIT on UPDATE"));
                 }
 
                 Ok(())

@@ -31,8 +31,8 @@ fn bench_join_query(criterion: &mut Criterion) {
     limbo_conn.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER)").unwrap();
 
     for i in 0..10_000 {
-        limbo_conn.execute(&format!("INSERT INTO users VALUES ({})", i)).unwrap();
-        limbo_conn.execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i)).unwrap();
+        limbo_conn.execute(format!("INSERT INTO users VALUES ({})", i)).unwrap();
+        limbo_conn.execute(format!("INSERT INTO orders VALUES ({}, {})", i, i)).unwrap();
     }
 
     // The join query

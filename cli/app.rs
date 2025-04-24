@@ -481,8 +481,8 @@ impl<'a> Limbo<'a> {
             if line.is_empty() {
                 return Ok(());
             }
-            if line.starts_with('.') {
-                self.handle_dot_command(&line[1..]);
+            if let Some(stripped) = line.strip_prefix(".") {
+                self.handle_dot_command(stripped);
                 let _ = self.reset_line(line);
                 return Ok(());
             }

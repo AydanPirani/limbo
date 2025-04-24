@@ -63,6 +63,7 @@ impl RowIterator {
     }
 
     #[wasm_bindgen]
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> JsValue {
         let mut stmt = self.inner.borrow_mut();
         match stmt.step() {

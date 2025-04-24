@@ -15,6 +15,7 @@ use crate::vdbe::Register;
 use crate::{bail_constraint_error, bail_parse_error, LimboError};
 pub use cache::JsonCacheCell;
 use jsonb::{ElementType, Jsonb, JsonbHeader, PathOperationMode, SearchOperation, SetOperation};
+use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::str::FromStr;
 
@@ -53,7 +54,7 @@ pub fn get_json(json_value: &OwnedValue, indent: Option<&str>) -> crate::Result<
             let jsonbin = Jsonb::new(b.len(), Some(b));
             jsonbin.is_valid()?;
             Ok(OwnedValue::Text(Text {
-                value: jsonbin.to_string()?.into_bytes(),
+                value: jsonbin.to_string()?.as_bytes().into(),
                 subtype: TextSubtype::Json,
             }))
         }
@@ -79,7 +80,7 @@ pub fn jsonb(json_value: &OwnedValue, cache: &JsonCacheCell) -> crate::Result<Ow
 
     let jsonbin = cache.get_or_insert_with(json_value, json_conv_fn);
     match jsonbin {
-        Ok(jsonbin) => Ok(OwnedValue::Blob(jsonbin.data())),
+        Ok(jsonbin) => Ok(OwnedValue::Blob(SmallVec::from_slice(&jsonbin.data()))),
         Err(_) => {
             bail_parse_error!("malformed JSON")
         }
@@ -414,7 +415,7 @@ fn json_string_to_db_type(
 ) -> crate::Result<OwnedValue> {
     let mut json_string = json.to_string()?;
     if matches!(flag, OutputVariant::Binary) {
-        return Ok(OwnedValue::Blob(json.data()));
+        return Ok(OwnedValue::Blob(SmallVec::from_slice(&json.data())));
     }
     match element_type {
         ElementType::ARRAY | ElementType::OBJECT => Ok(OwnedValue::Text(Text::json(json_string))),
@@ -423,12 +424,12 @@ fn json_string_to_db_type(
                 json_string.remove(json_string.len() - 1);
                 json_string.remove(0);
                 Ok(OwnedValue::Text(Text {
-                    value: json_string.into_bytes(),
+                    value: json_string.as_bytes().into(),
                     subtype: TextSubtype::Json,
                 }))
             } else {
                 Ok(OwnedValue::Text(Text {
-                    value: json_string.into_bytes(),
+                    value: json_string.as_bytes().into(),
                     subtype: TextSubtype::Text,
                 }))
             }
@@ -723,7 +724,7 @@ mod tests {
 
     #[test]
     fn test_get_json_blob_valid_jsonb() {
-        let binary_json = vec![124, 55, 104, 101, 121, 39, 121, 111];
+        let binary_json = smallvec::smallvec![124, 55, 104, 101, 121, 39, 121, 111];
         let input = OwnedValue::Blob(binary_json);
         let result = get_json(&input, None).unwrap();
         if let OwnedValue::Text(result_str) = result {
@@ -736,7 +737,7 @@ mod tests {
 
     #[test]
     fn test_get_json_blob_invalid_jsonb() {
-        let binary_json: Vec<u8> = vec![0xA2, 0x62, 0x6B, 0x31, 0x62, 0x76]; // Incomplete binary JSON
+        let binary_json = smallvec::smallvec![0xA2, 0x62, 0x6B, 0x31, 0x62, 0x76]; // Incomplete binary JSON
         let input = OwnedValue::Blob(binary_json);
         let result = get_json(&input, None);
         println!("{:?}", result);
@@ -792,7 +793,7 @@ mod tests {
 
     #[test]
     fn test_json_array_blob_invalid() {
-        let blob = Register::OwnedValue(OwnedValue::Blob("1".as_bytes().to_vec()));
+        let blob = Register::OwnedValue(OwnedValue::Blob("1".as_bytes().into()));
 
         let input = vec![blob];
 

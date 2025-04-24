@@ -96,17 +96,15 @@ impl Cursor {
         // For DDL and DML statements,
         // we need to execute the statement immediately
         if stmt_is_ddl || stmt_is_dml {
-            loop {
-                match stmt.borrow_mut().step().map_err(|e| {
-                    PyErr::new::<OperationalError, _>(format!("Step error: {:?}", e))
-                })? {
-                    limbo_core::StepResult::IO => {
-                        self.conn.io.run_once().map_err(|e| {
-                            PyErr::new::<OperationalError, _>(format!("IO error: {:?}", e))
-                        })?;
-                    }
-                    _ => break,
-                }
+            while let limbo_core::StepResult::IO = stmt
+                .borrow_mut()
+                .step()
+                .map_err(|e| PyErr::new::<OperationalError, _>(format!("Step error: {:?}", e)))?
+            {
+                self.conn
+                    .io
+                    .run_once()
+                    .map_err(|e| PyErr::new::<OperationalError, _>(format!("IO error: {:?}", e)))?;
             }
         }
 
@@ -130,7 +128,7 @@ impl Cursor {
                 })? {
                     limbo_core::StepResult::Row => {
                         let row = stmt.row().unwrap();
-                        let py_row = row_to_py(py, &row)?;
+                        let py_row = row_to_py(py, row)?;
                         return Ok(Some(py_row));
                     }
                     limbo_core::StepResult::IO => {
@@ -166,7 +164,7 @@ impl Cursor {
                 })? {
                     limbo_core::StepResult::Row => {
                         let row = stmt.row().unwrap();
-                        let py_row = row_to_py(py, &row)?;
+                        let py_row = row_to_py(py, row)?;
                         results.push(py_row);
                     }
                     limbo_core::StepResult::IO => {
@@ -344,7 +342,7 @@ fn row_to_py(py: Python, row: &limbo_core::Row) -> Result<PyObject> {
 /// Converts a Python object to a Limbo OwnedValue
 fn py_to_owned_value(obj: &Bound<PyAny>) -> Result<limbo_core::OwnedValue> {
     if obj.is_none() {
-        return Ok(OwnedValue::Null);
+        Ok(OwnedValue::Null)
     } else if let Ok(integer) = obj.extract::<i64>() {
         return Ok(OwnedValue::Integer(integer));
     } else if let Ok(float) = obj.extract::<f64>() {
@@ -352,7 +350,7 @@ fn py_to_owned_value(obj: &Bound<PyAny>) -> Result<limbo_core::OwnedValue> {
     } else if let Ok(string) = obj.extract::<String>() {
         return Ok(OwnedValue::Text(Text::from_str(string)));
     } else if let Ok(bytes) = obj.downcast::<PyBytes>() {
-        return Ok(OwnedValue::Blob(bytes.as_bytes().to_vec()));
+        return Ok(OwnedValue::Blob(bytes.as_bytes().into()));
     } else {
         return Err(PyErr::new::<ProgrammingError, _>(format!(
             "Unsupported Python type: {}",

@@ -17,7 +17,7 @@ impl LimboDB {
         LimboDB { db, io }
     }
 
-    pub fn to_ptr(self) -> jlong {
+    pub fn into_ptr(self) -> jlong {
         Box::into_raw(Box::new(self)) as jlong
     }
 
@@ -75,7 +75,7 @@ pub extern "system" fn Java_tech_turso_core_LimboDB_openUtf8<'local>(
         }
     };
 
-    LimboDB::new(db, io).to_ptr()
+    LimboDB::new(db, io).into_ptr()
 }
 
 #[no_mangle]
@@ -93,7 +93,7 @@ pub extern "system" fn Java_tech_turso_core_LimboDB_connect0<'local>(
     };
 
     let conn = LimboConnection::new(db.db.connect().unwrap(), db.io.clone());
-    conn.to_ptr()
+    conn.into_ptr()
 }
 
 #[no_mangle]

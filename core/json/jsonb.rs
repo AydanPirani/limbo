@@ -203,7 +203,7 @@ pub enum JsonIndentation<'a> {
     None,
 }
 
-impl<'a> JsonIndentation<'a> {
+impl JsonIndentation<'_> {
     pub fn is_pretty(&self) -> bool {
         match self {
             Self::Indentation(_) => true,
@@ -3398,12 +3398,12 @@ world""#,
         // Create a JSON string that exceeds MAX_JSON_DEPTH
         let mut deep_json = String::from("[");
         for _ in 0..MAX_JSON_DEPTH + 1 {
-            deep_json.push_str("[");
+            deep_json.push('[');
         }
         for _ in 0..MAX_JSON_DEPTH + 1 {
-            deep_json.push_str("]");
+            deep_json.push(']');
         }
-        deep_json.push_str("]");
+        deep_json.push(']');
 
         // Should fail due to exceeding depth limit
         assert!(Jsonb::from_str(&deep_json).is_err());

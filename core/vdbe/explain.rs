@@ -1,3 +1,5 @@
+use smallvec::SmallVec;
+
 use crate::vdbe::{builder::CursorType, insn::RegisterOrLiteral};
 
 use super::{Insn, InsnReference, OwnedValue, Program};
@@ -659,7 +661,7 @@ pub fn insn_to_str(
                 0,
                 *dest as i32,
                 0,
-                OwnedValue::Blob(value.clone()),
+                OwnedValue::Blob(SmallVec::from_slice(value)),
                 0,
                 format!(
                     "r[{}]={} (len={})",

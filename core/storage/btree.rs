@@ -5546,7 +5546,7 @@ mod tests {
                 )
                 .unwrap();
                 let value = ImmutableRecord::from_registers(&[Register::OwnedValue(
-                    OwnedValue::Blob(vec![0; *size]),
+                    OwnedValue::Blob(smallvec::smallvec![0; *size]),
                 )]);
                 tracing::info!("insert key:{}", key);
                 run_until_done(
@@ -5627,7 +5627,7 @@ mod tests {
                 )
                 .unwrap();
                 let value = ImmutableRecord::from_registers(&[Register::OwnedValue(
-                    OwnedValue::Blob(vec![0; size]),
+                    OwnedValue::Blob(smallvec::smallvec![0; size]),
                 )]);
                 let btree_before = format_btree(pager.clone(), root_page, 0);
                 run_until_done(
@@ -6672,7 +6672,7 @@ mod tests {
         let page = get_page(2);
         let usable_space = 4096;
         let record =
-            ImmutableRecord::from_registers(&[Register::OwnedValue(OwnedValue::Blob(vec![
+            ImmutableRecord::from_registers(&[Register::OwnedValue(OwnedValue::Blob(smallvec::smallvec![
                 0;
                 3600
             ]))]);
@@ -6788,7 +6788,7 @@ mod tests {
             tracing::info!("INSERT INTO t VALUES ({});", i,);
             let value =
                 ImmutableRecord::from_registers(&[Register::OwnedValue(OwnedValue::Text(Text {
-                    value: huge_texts[i].as_bytes().to_vec(),
+                    value: huge_texts[i].as_bytes().into(),
                     subtype: crate::types::TextSubtype::Text,
                 }))]);
             tracing::trace!("before insert {}", i);

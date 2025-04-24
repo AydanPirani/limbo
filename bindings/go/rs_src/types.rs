@@ -197,7 +197,7 @@ impl LimboValue {
                     return limbo_core::OwnedValue::Null;
                 }
                 let bytes = self.value.to_bytes();
-                limbo_core::OwnedValue::Blob(bytes.to_vec())
+                limbo_core::OwnedValue::Blob(bytes.into())
             }
             ValueType::Null => limbo_core::OwnedValue::Null,
         }

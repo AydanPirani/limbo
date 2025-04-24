@@ -24,7 +24,7 @@ impl LimboConnection {
         LimboConnection { conn, io }
     }
 
-    pub fn to_ptr(self) -> jlong {
+    pub fn into_ptr(self) -> jlong {
         Box::into_raw(Box::new(self)) as jlong
     }
 
@@ -79,7 +79,7 @@ pub extern "system" fn Java_tech_turso_core_LimboConnection_prepareUtf8<'local>(
     };
 
     match connection.conn.prepare(sql) {
-        Ok(stmt) => LimboStatement::new(stmt, connection.clone()).to_ptr(),
+        Ok(stmt) => LimboStatement::new(stmt, connection.clone()).into_ptr(),
         Err(e) => {
             set_err_msg_and_throw_exception(
                 &mut env,
