@@ -4509,7 +4509,7 @@ pub fn op_once(
     };
     assert!(target_pc_when_reentered.is_offset());
     let offset = state.pc;
-    if state.once.iter().any(|o| o == offset) {
+    if state.once.iter().any(|o| *o == offset) {
         state.pc = target_pc_when_reentered.to_offset_int();
         return Ok(InsnFunctionStepResult::Step);
     }
