@@ -1,4 +1,3 @@
-use crate::fast_lock::SpinLock;
 use crate::result::LimboResult;
 use crate::storage::buffer_pool::BufferPool;
 use crate::storage::database::DatabaseStorage;
@@ -632,8 +631,10 @@ impl Pager {
     */
     #[allow(clippy::readonly_write_lock)]
     pub fn allocate_page(&self) -> Result<PageRef> {
-        let header = &self.db_header;
-        *header.database_size.lock() += 1;
+        let mut database_size = self.db_header.database_size.lock();
+        *database_size += 1;
+        let new_page_id = *database_size as usize;
+        drop(database_size);
         {
             // update database size
             // read sync for now
@@ -647,12 +648,12 @@ impl Pager {
                 self.add_dirty(1);
 
                 let contents = first_page_ref.get().contents.as_ref().unwrap();
-                contents.write_database_header(&header);
+                contents.write_database_header(&self.db_header);
                 break;
             }
         }
 
-        let page = allocate_page(*header.database_size.lock() as usize, &self.buffer_pool, 0);
+        let page = allocate_page(new_page_id, &self.buffer_pool, 0);
         {
             // setup page and add to cache
             page.set_dirty();

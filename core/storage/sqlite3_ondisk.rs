@@ -145,6 +145,21 @@ pub struct DatabaseHeader {
 
     /// SQLITE_VERSION_NUMBER
     pub version_number: u32,
+    // pub state: SpinLock<MutableHeaderState>,
+}
+
+pub struct MutableHeaderState {
+    /// Size of the database file in pages. The "in-header database size".
+    pub database_size: u32,
+
+    /// Page number of the first freelist trunk page.
+    pub freelist_trunk_page: u32,
+
+    /// Total number of freelist pages.
+    pub freelist_pages: u32,
+
+    /// Default page cache size.
+    pub default_page_cache_size: i32,
 }
 
 pub const WAL_HEADER_SIZE: usize = 32;
