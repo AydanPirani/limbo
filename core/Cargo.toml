@@ -112,6 +112,10 @@ name = "json_benchmark"
 harness = false
 
 [[bench]]
+name = "select_benchmark"
+harness = false
+
+[[bench]]
 name = "join_benchmark"
 harness = false
 
