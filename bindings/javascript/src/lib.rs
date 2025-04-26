@@ -36,7 +36,7 @@ impl Database {
         // ensure db header is there
         io.run_once().unwrap();
 
-        let page_size = db_header.lock().page_size;
+        let page_size = db_header.page_size;
 
         let wal_path = format!("{}-wal", path);
         let wal_shared =

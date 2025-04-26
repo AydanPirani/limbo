@@ -462,7 +462,7 @@ impl ProgramBuilder {
 
     pub fn build(
         mut self,
-        database_header: Arc<SpinLock<DatabaseHeader>>,
+        database_header: Arc<DatabaseHeader>,
         connection: Weak<Connection>,
         change_cnt_on: bool,
     ) -> Program {

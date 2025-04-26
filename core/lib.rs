@@ -93,7 +93,7 @@ pub struct Database {
     mv_store: Option<Rc<MvStore>>,
     schema: Arc<RwLock<Schema>>,
     // TODO: make header work without lock
-    header: Arc<SpinLock<DatabaseHeader>>,
+    header: Arc<DatabaseHeader>,
     db_file: Arc<dyn DatabaseStorage>,
     io: Arc<dyn IO>,
     page_size: u16,
@@ -117,7 +117,7 @@ impl Database {
         let wal_path = format!("{}-wal", path);
         let db_header = Pager::begin_open(db_file.clone())?;
         io.run_once()?;
-        let page_size = db_header.lock().page_size;
+        let page_size = db_header.page_size;
         let wal_shared = WalFileShared::open_shared(&io, wal_path.as_str(), page_size)?;
         Self::open(io, db_file, wal_shared, enable_mvcc)
     }
@@ -132,7 +132,7 @@ impl Database {
         let db_header = Pager::begin_open(db_file.clone())?;
         io.run_once()?;
         DATABASE_VERSION.get_or_init(|| {
-            let version = db_header.lock().version_number;
+            let version = db_header.version_number;
             version.to_string()
         });
         let mv_store = if enable_mvcc {
@@ -144,7 +144,7 @@ impl Database {
             None
         };
         let shared_page_cache = Arc::new(RwLock::new(DumbLruPageCache::new(10)));
-        let page_size = db_header.lock().page_size;
+        let page_size = db_header.page_size;
         let header = db_header;
         let schema = Arc::new(RwLock::new(Schema::new()));
         let db = Database {
@@ -291,7 +291,7 @@ pub struct Connection {
     _db: Arc<Database>,
     pager: Rc<Pager>,
     schema: Arc<RwLock<Schema>>,
-    header: Arc<SpinLock<DatabaseHeader>>,
+    header: Arc<DatabaseHeader>,
     auto_commit: Cell<bool>,
     mv_transactions: RefCell<Vec<crate::mvcc::database::TxID>>,
     transaction_state: Cell<TransactionState>,

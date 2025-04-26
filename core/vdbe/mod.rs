@@ -351,7 +351,7 @@ pub struct Program {
     pub max_registers: usize,
     pub insns: Vec<(Insn, InsnFunction)>,
     pub cursor_ref: Vec<(Option<String>, CursorType)>,
-    pub database_header: Arc<SpinLock<DatabaseHeader>>,
+    pub database_header: Arc<DatabaseHeader>,
     pub comments: Option<HashMap<InsnReference, &'static str>>,
     pub parameters: crate::parameters::Parameters,
     pub connection: Weak<Connection>,

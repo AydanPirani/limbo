@@ -4178,7 +4178,7 @@ pub fn op_page_count(
     }
     // SQLite returns "0" on an empty database, and 2 on the first insertion,
     // so we'll mimic that behavior.
-    let mut pages = pager.db_header.lock().database_size.into();
+    let mut pages = (*pager.db_header.database_size.lock()).into();
     if pages == 1 {
         pages = 0;
     }
@@ -4237,7 +4237,7 @@ pub fn op_read_cookie(
         todo!("temp databases not implemented yet");
     }
     let cookie_value = match cookie {
-        Cookie::UserVersion => pager.db_header.lock().user_version.into(),
+        Cookie::UserVersion => pager.db_header.user_version.into(),
         cookie => todo!("{cookie:?} is not yet implement for ReadCookie"),
     };
     state.registers[*dest] = Register::OwnedValue(OwnedValue::Integer(cookie_value));
@@ -4424,7 +4424,7 @@ pub fn op_open_ephemeral(
     let db_file = Arc::new(FileMemoryStorage::new(file));
 
     let db_header = Pager::begin_open(db_file.clone())?;
-    let buffer_pool = Rc::new(BufferPool::new(db_header.lock().page_size as usize));
+    let buffer_pool = Rc::new(BufferPool::new(db_header.page_size as usize));
     let page_cache = Arc::new(RwLock::new(DumbLruPageCache::new(10)));
 
     let pager = Rc::new(Pager::finish_open(

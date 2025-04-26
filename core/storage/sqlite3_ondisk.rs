@@ -49,7 +49,7 @@ use crate::storage::database::DatabaseStorage;
 use crate::storage::pager::Pager;
 use crate::types::{ImmutableRecord, RawSlice, RefValue, TextRef, TextSubtype};
 use crate::{File, Result};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -104,13 +104,13 @@ pub struct DatabaseHeader {
     change_counter: u32,
 
     /// Size of the database file in pages. The "in-header database size".
-    pub database_size: u32,
+    pub database_size: Rc<SpinLock<u32>>,
 
     /// Page number of the first freelist trunk page.
-    pub freelist_trunk_page: u32,
+    pub freelist_trunk_page: Rc<SpinLock<u32>>,
 
     /// Total number of freelist pages.
-    pub freelist_pages: u32,
+    pub freelist_pages: Rc<SpinLock<u32>>,
 
     /// The schema cookie. Incremented when the database schema changes.
     schema_cookie: u32,
@@ -119,7 +119,7 @@ pub struct DatabaseHeader {
     schema_format: u32,
 
     /// Default page cache size.
-    pub default_page_cache_size: i32,
+    pub default_page_cache_size: Rc<SpinLock<i32>>,
 
     /// The page number of the largest root b-tree page when in auto-vacuum or
     /// incremental-vacuum modes, or zero otherwise.
@@ -225,12 +225,12 @@ impl Default for DatabaseHeader {
             min_embed_frac: 32,
             min_leaf_frac: 32,
             change_counter: 1,
-            database_size: 1,
-            freelist_trunk_page: 0,
-            freelist_pages: 0,
+            database_size: Rc::new(SpinLock::new(1)),
+            freelist_trunk_page: Rc::new(SpinLock::new(0)),
+            freelist_pages: Rc::new(SpinLock::new(0)),
             schema_cookie: 0,
             schema_format: 4, // latest format, new sqlite3 databases use this format
-            default_page_cache_size: 500, // pages
+            default_page_cache_size: Rc::new(SpinLock::new(500)), // pages
             vacuum_mode_largest_root_page: 0,
             text_encoding: 1, // utf-8
             user_version: 0,
@@ -245,11 +245,11 @@ impl Default for DatabaseHeader {
 
 pub fn begin_read_database_header(
     db_file: Arc<dyn DatabaseStorage>,
-) -> Result<Arc<SpinLock<DatabaseHeader>>> {
+) -> Result<Arc<DatabaseHeader>> {
     let drop_fn = Rc::new(|_buf| {});
     #[allow(clippy::arc_with_non_send_sync)]
     let buf = Arc::new(RefCell::new(Buffer::allocate(512, drop_fn)));
-    let result = Arc::new(SpinLock::new(DatabaseHeader::default()));
+    let result = Arc::new(Cell::new(DatabaseHeader::default()));
     let header = result.clone();
     let complete = Box::new(move |buf: Arc<RefCell<Buffer>>| {
         let header = header.clone();
@@ -257,16 +257,16 @@ pub fn begin_read_database_header(
     });
     let c = Completion::Read(ReadCompletion::new(buf, complete));
     db_file.read_page(1, c)?;
-    Ok(result)
+    Ok(Arc::new(result.take()))
 }
 
 fn finish_read_database_header(
     buf: Arc<RefCell<Buffer>>,
-    header: Arc<SpinLock<DatabaseHeader>>,
+    header_ref: Arc<Cell<DatabaseHeader>>,
 ) -> Result<()> {
     let buf = buf.borrow();
     let buf = buf.as_slice();
-    let mut header = header.lock();
+    let mut header = header_ref.take();
     header.magic.copy_from_slice(&buf[0..16]);
     header.page_size = u16::from_be_bytes([buf[16], buf[17]]);
     header.write_version = buf[18];
@@ -276,14 +276,22 @@ fn finish_read_database_header(
     header.min_embed_frac = buf[22];
     header.min_leaf_frac = buf[23];
     header.change_counter = u32::from_be_bytes([buf[24], buf[25], buf[26], buf[27]]);
-    header.database_size = u32::from_be_bytes([buf[28], buf[29], buf[30], buf[31]]);
-    header.freelist_trunk_page = u32::from_be_bytes([buf[32], buf[33], buf[34], buf[35]]);
-    header.freelist_pages = u32::from_be_bytes([buf[36], buf[37], buf[38], buf[39]]);
+    header.database_size = Rc::new(SpinLock::new(u32::from_be_bytes([
+        buf[28], buf[29], buf[30], buf[31],
+    ])));
+    header.freelist_trunk_page = Rc::new(SpinLock::new(u32::from_be_bytes([
+        buf[32], buf[33], buf[34], buf[35],
+    ])));
+    header.freelist_pages = Rc::new(SpinLock::new(u32::from_be_bytes([
+        buf[36], buf[37], buf[38], buf[39],
+    ])));
     header.schema_cookie = u32::from_be_bytes([buf[40], buf[41], buf[42], buf[43]]);
     header.schema_format = u32::from_be_bytes([buf[44], buf[45], buf[46], buf[47]]);
-    header.default_page_cache_size = i32::from_be_bytes([buf[48], buf[49], buf[50], buf[51]]);
-    if header.default_page_cache_size == 0 {
-        header.default_page_cache_size = DEFAULT_CACHE_SIZE;
+    header.default_page_cache_size = Rc::new(SpinLock::new(i32::from_be_bytes([
+        buf[48], buf[49], buf[50], buf[51],
+    ])));
+    if *header.default_page_cache_size.lock() == 0 {
+        *header.default_page_cache_size.lock() = DEFAULT_CACHE_SIZE;
     }
     header.vacuum_mode_largest_root_page = u32::from_be_bytes([buf[52], buf[53], buf[54], buf[55]]);
     header.text_encoding = u32::from_be_bytes([buf[56], buf[57], buf[58], buf[59]]);
@@ -293,6 +301,8 @@ fn finish_read_database_header(
     header.reserved_for_expansion.copy_from_slice(&buf[72..92]);
     header.version_valid_for = u32::from_be_bytes([buf[92], buf[93], buf[94], buf[95]]);
     header.version_number = u32::from_be_bytes([buf[96], buf[97], buf[98], buf[99]]);
+
+    header_ref.set(header);
     Ok(())
 }
 
@@ -347,12 +357,12 @@ pub fn write_header_to_buf(buf: &mut [u8], header: &DatabaseHeader) {
     buf[22] = header.min_embed_frac;
     buf[23] = header.min_leaf_frac;
     buf[24..28].copy_from_slice(&header.change_counter.to_be_bytes());
-    buf[28..32].copy_from_slice(&header.database_size.to_be_bytes());
-    buf[32..36].copy_from_slice(&header.freelist_trunk_page.to_be_bytes());
-    buf[36..40].copy_from_slice(&header.freelist_pages.to_be_bytes());
+    buf[28..32].copy_from_slice(&header.database_size.lock().to_be_bytes());
+    buf[32..36].copy_from_slice(&header.freelist_trunk_page.lock().to_be_bytes());
+    buf[36..40].copy_from_slice(&header.freelist_pages.lock().to_be_bytes());
     buf[40..44].copy_from_slice(&header.schema_cookie.to_be_bytes());
     buf[44..48].copy_from_slice(&header.schema_format.to_be_bytes());
-    buf[48..52].copy_from_slice(&header.default_page_cache_size.to_be_bytes());
+    buf[48..52].copy_from_slice(&header.default_page_cache_size.lock().to_be_bytes());
 
     buf[52..56].copy_from_slice(&header.vacuum_mode_largest_root_page.to_be_bytes());
     buf[56..60].copy_from_slice(&header.text_encoding.to_be_bytes());

@@ -49,7 +49,7 @@ use update::translate_update;
 pub fn translate(
     schema: &Schema,
     stmt: ast::Stmt,
-    database_header: Arc<SpinLock<DatabaseHeader>>,
+    database_header: Arc<DatabaseHeader>,
     pager: Rc<Pager>,
     connection: Weak<Connection>,
     syms: &SymbolTable,
