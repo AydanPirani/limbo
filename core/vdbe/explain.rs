@@ -225,6 +225,36 @@ pub fn insn_to_str(
                     target_pc.to_debug_int()
                 ),
             ),
+            Insn::HashAdd {
+                start_reg,
+                count
+            } => (
+                "HashAdd",
+                *start_reg as i32,
+                *count as i32,
+                0,
+                OwnedValue::build_text(""),
+                0,
+                "".to_string()
+            ),
+            Insn::HashJoinRow {
+                idx_reg,
+                store_regs
+            } => (
+                "HashJoinRow",
+                *idx_reg as i32,
+                0,
+                0,
+                OwnedValue::from_text(
+                    &store_regs
+                        .into_iter()
+                        .map(|idx| { idx.to_string() })
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                ),
+                0,
+                "".to_string(),
+            ),
             Insn::Ne {
                 lhs,
                 rhs,

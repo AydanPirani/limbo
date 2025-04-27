@@ -239,6 +239,7 @@ pub struct ProgramState {
     pub(crate) mv_tx_id: Option<crate::mvcc::database::TxID>,
     interrupted: bool,
     parameters: HashMap<NonZero<usize>, OwnedValue>,
+    hash_map: HashMap<i64, Vec<Register>>,
     halt_state: Option<HaltState>,
     #[cfg(feature = "json")]
     json_cache: JsonCacheCell,
@@ -263,6 +264,7 @@ impl ProgramState {
             interrupted: false,
             parameters: HashMap::new(),
             halt_state: None,
+            hash_map: HashMap::new(),
             #[cfg(feature = "json")]
             json_cache: JsonCacheCell::new(),
         }
@@ -319,6 +321,10 @@ impl ProgramState {
                 .as_mut()
                 .expect("cursor not allocated")
         })
+    }
+
+    pub fn get_res_row(&self) -> Option<&Row> {
+        return self.result_row.as_ref()
     }
 }
 

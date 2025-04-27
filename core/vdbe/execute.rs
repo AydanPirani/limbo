@@ -15,6 +15,7 @@ use crate::{
     },
     types::compare_immutable,
 };
+use core::panic;
 use std::{borrow::BorrowMut, rc::Rc, sync::Arc};
 
 use crate::{pseudo::PseudoCursor, result::LimboResult};
@@ -1128,6 +1129,16 @@ pub fn op_vnext(
     Ok(InsnFunctionStepResult::Step)
 }
 
+pub fn op_hashjoin(
+    program: &Program,
+    state: &mut ProgramState,
+    insn: &Insn,
+    pager: &Rc<Pager>,
+    mv_store: Option<&Rc<MvStore>>
+) -> Result<InsnFunctionStepResult> {
+    Ok(InsnFunctionStepResult::Step)
+}
+
 pub fn op_vdestroy(
     program: &Program,
     state: &mut ProgramState,
@@ -2042,6 +2053,66 @@ pub fn op_seek(
         state.pc = pc;
     }
     Ok(InsnFunctionStepResult::Step)
+}
+
+pub fn op_hash_add(
+    program: &Program,
+    state: &mut ProgramState,
+    insn: &Insn,
+    pager: &Rc<Pager>,
+    mv_store: Option<&Rc<MvStore>>,
+) -> Result<InsnFunctionStepResult> {
+    let Insn::HashAdd { start_reg, count } = insn else {
+        unreachable!("unexpected Insn {:?}", insn)
+    };
+    let row = Row {
+        values: &state.registers[*start_reg] as *const Register,
+        count: *count,
+    };
+    if let OwnedValue::Integer(key) = state.registers[*start_reg].get_owned_value() {
+        let registers: &[Register] = unsafe {
+            std::slice::from_raw_parts(row.values, row.count)
+        };
+        
+        let new_values: Vec<Register> = registers.to_vec();
+        
+        state.hash_map.insert(*key, new_values);
+    }
+    else {
+        panic!("Unsupported type of key")
+    }
+    
+    state.pc += 1;
+    return Ok(InsnFunctionStepResult::Row);
+}
+
+pub fn op_hash_join_row(
+    program: &Program,
+    state: &mut ProgramState,
+    insn: &Insn,
+    pager: &Rc<Pager>,
+    mv_store: Option<&Rc<MvStore>>,
+) -> Result<InsnFunctionStepResult> {
+    let Insn::HashJoinRow { idx_reg, store_regs } = insn else {
+        unreachable!("unexpected Insn {:?}", insn)
+    };
+
+    let idx_value = match &state.registers[*idx_reg] {
+        Register::OwnedValue(OwnedValue::Integer(i)) => *i,
+        _ => panic!("Expected integer in idx_reg"),
+    };
+
+    let hash_row = match state.hash_map.get(&idx_value) {
+        Some(row) => row,
+        None => panic!("Hash join lookup failed for key {}", idx_value),
+    };
+
+    for (i, dest_reg) in store_regs.iter().enumerate() {
+        state.registers[*dest_reg] = hash_row[i].clone();
+    }
+
+    state.pc += 1;
+    return Ok(InsnFunctionStepResult::Row);
 }
 
 pub fn op_idx_ge(

@@ -472,6 +472,16 @@ pub enum Insn {
         table_cursor_id: CursorID,
     },
 
+    HashAdd {
+        start_reg: usize,
+        count: usize,
+    },
+
+    HashJoinRow {
+        idx_reg: usize,
+        store_regs: Vec<usize>,
+    },
+
     /// If cursor_id refers to an SQL table (B-Tree that uses integer keys), use the value in start_reg as the key.
     /// If cursor_id refers to an SQL index, then start_reg is the first in an array of num_regs registers that are used as an unpacked index key.
     /// Seek to the first index entry that is greater than or equal to the given key. If not found, jump to the given PC. Otherwise, continue to the next instruction.
@@ -870,6 +880,8 @@ impl Insn {
             Insn::VUpdate { .. } => execute::op_vupdate,
             Insn::VNext { .. } => execute::op_vnext,
             Insn::VDestroy { .. } => execute::op_vdestroy,
+            Insn::HashAdd { .. } => execute::op_hash_add,
+            Insn::HashJoinRow { .. } => execute::op_hash_join_row,
 
             Insn::OpenPseudo { .. } => execute::op_open_pseudo,
             Insn::Rewind { .. } => execute::op_rewind,
