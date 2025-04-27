@@ -19,9 +19,9 @@ use crate::{
 use super::{BranchOffset, CursorID, Insn, InsnFunction, InsnReference, Program};
 #[allow(dead_code)]
 pub struct ProgramBuilder {
-    next_free_register: usize,
+    pub next_free_register: usize,
     next_free_cursor_id: usize,
-    insns: Vec<(Insn, InsnFunction)>,
+    pub insns: Vec<(Insn, InsnFunction)>,
     // for temporarily storing instructions that will be put after Transaction opcode
     constant_insns: Vec<(Insn, InsnFunction)>,
     // Vector of labels which must be assigned to next emitted instruction

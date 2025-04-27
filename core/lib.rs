@@ -74,7 +74,7 @@ use translate::select::prepare_select_plan;
 pub use types::OwnedValue;
 pub use types::RefValue;
 use util::{columns_from_create_table_body, parse_schema_rows};
-use vdbe::{builder::QueryMode, VTabOpaqueCursor};
+use vdbe::{builder::QueryMode, Program, VTabOpaqueCursor};
 pub type Result<T, E = LimboError> = std::result::Result<T, E>;
 pub static DATABASE_VERSION: OnceLock<String> = OnceLock::new();
 
@@ -578,6 +578,10 @@ impl Statement {
 
     pub fn set_mv_tx_id(&mut self, mv_tx_id: Option<u64>) {
         self.state.mv_tx_id = mv_tx_id;
+    }
+
+    pub fn get_program(&self) -> &Program {
+        &self.program
     }
 
     pub fn interrupt(&mut self) {

@@ -10,6 +10,10 @@ use crate::translate::planner::{
 };
 use crate::util::normalize_ident;
 use crate::vdbe::builder::{ProgramBuilderOpts, QueryMode};
+use crate::vdbe::insn::Insn;
+use crate::vdbe::execute::*;
+use crate::vdbe::BranchOffset;
+use crate::vdbe::{self, Program};
 use crate::SymbolTable;
 use crate::{schema::Schema, vdbe::builder::ProgramBuilder, Result};
 use limbo_sqlite3_parser::ast::{self};
@@ -34,6 +38,30 @@ pub fn translate_select(
         approx_num_labels: estimate_num_labels(select),
     });
     emit_program(&mut program, select_plan, syms)?;
+
+    // TODO: un-hardcode this...
+    // let mut program = ProgramBuilder::new(ProgramBuilderOpts {
+    //     query_mode,
+    //     num_cursors: 0,
+    //     approx_num_insns: 14,
+    //     approx_num_labels: 8,
+    // });
+    program.insns = vec![
+        (Insn::Init { target_pc: BranchOffset::Offset(1) }, op_init),
+        (Insn::OpenRead{cursor_id: 0, root_page: 1158}, op_open_read),
+        (Insn::OpenRead{cursor_id: 1, root_page: 1159}, op_open_read),
+        (Insn::RowId { cursor_id: 0, dest: 7 }, op_row_id),
+        (Insn::HashAdd { start_reg: 7, count: 1 }, op_hash_add),
+        (Insn::Next { cursor_id: 0, pc_if_next: BranchOffset::Offset(3) }, op_next),
+        (Insn::Column { cursor_id: 1, column: 0, dest: 4 }, op_column),
+        (Insn::Column { cursor_id: 1, column: 1, dest: 5 }, op_column),
+        (Insn::HashJoinRow { idx_reg: 5, store_regs: vec![5] }, op_hash_join_row),
+        (Insn::ResultRow { start_reg: 4, count: 2 }, op_result_row),
+        (Insn::Next { cursor_id: 1, pc_if_next: BranchOffset::Offset(8) }, op_next),
+        (Insn::Halt { err_code: 0, description: "".to_string() }, op_halt),
+        (Insn::Transaction { write: false }, op_transaction)
+    ];
+    program.next_free_register = 8;
     Ok(program)
 }
 

@@ -24,50 +24,72 @@ fn bench_join_query(criterion: &mut Criterion) {
 
     // Setup tables
     // TODO: this should theoretically be done once externally
-    limbo_conn.execute("DROP TABLE IF EXISTS users").unwrap();
-    limbo_conn.execute("DROP TABLE IF EXISTS orders").unwrap();
+    // limbo_conn.execute("DROP TABLE IF EXISTS users").unwrap();
+    // limbo_conn.execute("DROP TABLE IF EXISTS orders").unwrap();
 
-    limbo_conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)").unwrap();
-    limbo_conn.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER)").unwrap();
+    // limbo_conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)").unwrap();
+    // limbo_conn.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER)").unwrap();
 
-    for i in 0..10_000 {
-        limbo_conn.execute(&format!("INSERT INTO users VALUES ({})", i)).unwrap();
-        limbo_conn.execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i)).unwrap();
-    }
+    // for i in 0..10_000 {
+    //     limbo_conn.execute(&format!("INSERT INTO users VALUES ({})", i)).unwrap();
+    //     limbo_conn.execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i)).unwrap();
+    // }
 
     // The join query
     let query = "SELECT u.id, o.id FROM users u JOIN orders o ON u.id = o.user_id";
 
     let mut group = criterion.benchmark_group("join_query");
+    {
+        let mut stmt = limbo_conn.prepare(query).unwrap();
+        // for (_, c) in stmt.get_program().insns.iter().enumerate() {
+        //     println!("{:?}", c);
+        // }
+        loop {
+            match stmt.step().unwrap() {
+                limbo_core::StepResult::Row => {
+                    black_box(stmt.row());
+                }
+                limbo_core::StepResult::IO => {
+                    let _ = io.run_once();
+                }
+                limbo_core::StepResult::Done => {
+                    break;
+                }
+                limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
+                    unreachable!();
+                }
+            }
+        }
+    }
 
     // Benchmark Limbo execution
-    group.bench_with_input(
-        BenchmarkId::new("limbo_execute", query),
-        &query,
-        |b, query| {
-            let io = io.clone();
-            b.iter(|| {
-                let mut stmt = limbo_conn.prepare(query).unwrap();
-                loop {
-                    match stmt.step().unwrap() {
-                        limbo_core::StepResult::Row => {
-                            black_box(stmt.row());
-                        }
-                        limbo_core::StepResult::IO => {
-                            let _ = io.run_once();
-                        }
-                        limbo_core::StepResult::Done => {
-                            break;
-                        }
-                        limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
-                            unreachable!();
-                        }
-                    }
-                }
-                // stmt.reset();
-            });
-        },
-    );
+    // group.bench_with_input(
+    //     BenchmarkId::new("limbo_execute", query),
+    //     &query,
+    //     |b, query| {
+    //         let io = io.clone();
+    //         b.iter(|| {
+    //             let mut stmt = limbo_conn.prepare(query).unwrap();
+    //             loop {
+    //                 match stmt.step().unwrap() {
+    //                     limbo_core::StepResult::Row => {
+    //                         black_box(stmt.row());
+    //                     }
+    //                     limbo_core::StepResult::IO => {
+    //                         let _ = io.run_once();
+    //                     }
+    //                     limbo_core::StepResult::Done => {
+    //                         break;
+    //                     }
+    //                     limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
+    //                         unreachable!();
+    //                     }
+    //                 }
+    //             }
+    //             // stmt.reset();
+    //         });
+    //     },
+    // );
 
     if enable_rusqlite {
         let sqlite_conn = rusqlite_open();

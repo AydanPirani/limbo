@@ -2055,11 +2055,11 @@ pub fn op_hash_add(
     let Insn::HashAdd { start_reg, count } = insn else {
         unreachable!("unexpected Insn {:?}", insn)
     };
-    let row = Row {
-        values: &state.registers[*start_reg] as *const Register,
-        count: *count,
-    };
     if let OwnedValue::Integer(key) = state.registers[*start_reg].get_owned_value() {
+        let row = Row {
+            values: &state.registers[*start_reg] as *const Register,
+            count: *count,
+        };
         let registers: &[Register] = unsafe {
             std::slice::from_raw_parts(row.values, row.count)
         };
