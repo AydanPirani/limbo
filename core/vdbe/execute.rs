@@ -2055,21 +2055,29 @@ pub fn op_hash_add(
     let Insn::HashAdd { start_reg, count } = insn else {
         unreachable!("unexpected Insn {:?}", insn)
     };
-    if let OwnedValue::Integer(key) = state.registers[*start_reg].get_owned_value() {
-        let row = Row {
-            values: &state.registers[*start_reg] as *const Register,
-            count: *count,
-        };
-        let registers: &[Register] = unsafe {
-            std::slice::from_raw_parts(row.values, row.count)
-        };
-        
-        let new_values: Vec<Register> = registers.to_vec();
-        
-        state.hash_map.insert(*key, new_values);
-    }
-    else {
-        panic!("Unsupported type of key")
+    let owned_value = state.registers[*start_reg].get_owned_value();
+
+
+    match owned_value {
+        OwnedValue::Integer(key) => {
+            let row = Row {
+                values: &state.registers[*start_reg] as *const Register,
+                count: *count,
+            };
+            let registers: &[Register] = unsafe {
+                std::slice::from_raw_parts(row.values, row.count)
+            };
+    
+            let new_values: Vec<Register> = registers.to_vec();
+    
+            state.hash_map.insert(*key, new_values);
+        },
+        OwnedValue::Null => {
+            eprint!("Encountered {:?} as a key, skipping", owned_value);
+        },
+        _ => {
+            panic!("Key of type {:?} is unsupported", owned_value);
+        }
     }
     
     state.pc += 1;

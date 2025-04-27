@@ -337,6 +337,41 @@ impl Connection {
         }
     }
 
+    pub fn prepare_hardcoded(self: &Rc<Connection>, sql: impl AsRef<str>) -> Result<Statement> {
+        let sql = sql.as_ref();
+        tracing::trace!("Preparing: {}", sql);
+        let mut parser = Parser::new(sql.as_bytes());
+        let cmd = parser.next()?;
+        let syms = self.syms.borrow();
+        if let Some(cmd) = cmd {
+            match cmd {
+                Cmd::Stmt(stmt) => {
+                    let program = Rc::new(translate::translate(
+                        self.schema
+                            .try_read()
+                            .ok_or(LimboError::SchemaLocked)?
+                            .deref(),
+                        stmt,
+                        self.header.clone(),
+                        self.pager.clone(),
+                        Rc::downgrade(self),
+                        &syms,
+                        QueryMode::Hardcode,
+                    )?);
+                    Ok(Statement::new(
+                        program,
+                        self._db.mv_store.clone(),
+                        self.pager.clone(),
+                    ))
+                }
+                Cmd::Explain(_stmt) => todo!(),
+                Cmd::ExplainQueryPlan(_stmt) => todo!(),
+            }
+        } else {
+            todo!()
+        }
+    }
+
     pub fn query(self: &Rc<Connection>, sql: impl AsRef<str>) -> Result<Option<Statement>> {
         let sql = sql.as_ref();
         tracing::trace!("Querying: {}", sql);

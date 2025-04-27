@@ -58,6 +58,7 @@ impl CursorType {
 pub enum QueryMode {
     Normal,
     Explain,
+    Hardcode
 }
 
 impl From<ast::Cmd> for QueryMode {

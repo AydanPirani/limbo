@@ -40,7 +40,7 @@ fn bench_join_query(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("join_query");
     {
-        let mut stmt = limbo_conn.prepare(query).unwrap();
+        let mut stmt = limbo_conn.prepare_hardcoded(query).unwrap();
         // for (_, c) in stmt.get_program().insns.iter().enumerate() {
         //     println!("{:?}", c);
         // }
