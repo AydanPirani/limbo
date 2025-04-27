@@ -2411,7 +2411,10 @@ impl BTreeCursor {
                     let new_last_page = pages_to_balance_new.last().unwrap();
                     new_last_page
                         .get_contents()
-                        .write_u32(offset::BTREE_RIGHTMOST_PTR, right_pointer);
+                        .update_rightmost_pointer(right_pointer);
+                    // new_last_page
+                    //     .get_contents()
+                    //     .write_u32(offset::BTREE_RIGHTMOST_PTR, right_pointer);
                 }
                 // TODO: pointer map update (vacuum support)
                 // Update divider cells in parent
@@ -2430,7 +2433,9 @@ impl BTreeCursor {
                         // Make this page's rightmost pointer point to pointer of divider cell before modification
                         let previous_pointer_divider = read_u32(&divider_cell, 0);
                         page.get_contents()
-                            .write_u32(offset::BTREE_RIGHTMOST_PTR, previous_pointer_divider);
+                            .update_rightmost_pointer(previous_pointer_divider);
+                        // page.get_contents()
+                        //     .write_u32(offset::BTREE_RIGHTMOST_PTR, previous_pointer_divider);
                         // divider cell now points to this page
                         new_divider_cell.extend_from_slice(&(page.get().id as u32).to_be_bytes());
                         // now copy the rest of the divider cell:

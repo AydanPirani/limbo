@@ -404,6 +404,163 @@ pub struct OverflowCell {
     pub payload: Pin<Vec<u8>>,
 }
 
+#[repr(C, packed)]
+struct PageMetadata {
+    r#type: u8,
+    first_freeblock_offset: u16,
+    cell_count: u16,
+    content_start_offset: u16,
+    frag_free_bytes: u8,
+}
+
+#[repr(C, packed)]
+struct InteriorHeader {
+    metadata: PageMetadata,
+    rightmost_pointer: u32,
+}
+
+type LeafHeader = PageMetadata;
+
+#[repr(u8)]
+enum TreePageHeader<'buf> {
+    IndexInterior(&'buf InteriorHeader),
+    TableInterior(&'buf InteriorHeader),
+    IndexLeaf(&'buf LeafHeader),
+    TableLeaf(&'buf LeafHeader),
+}
+
+impl<'buf> TreePageHeader<'buf> {
+    pub fn from_buffer(buf: &'buf [u8]) -> Result<Self> {
+        if buf.len() < 8 {
+            crate::bail_corrupt_error!("Buffer too short for page header");
+        }
+        let r#type = buf[0];
+        match r#type {
+            0x02 => Ok(Self::IndexInterior(unsafe {
+                &*(buf.as_ptr() as *const InteriorHeader)
+            })),
+            0x05 => Ok(Self::TableInterior(unsafe {
+                &*(buf.as_ptr() as *const InteriorHeader)
+            })),
+            0x0A => Ok(Self::IndexLeaf(unsafe {
+                &*(buf.as_ptr() as *const LeafHeader)
+            })),
+            0x0D => Ok(Self::TableLeaf(unsafe {
+                &*(buf.as_ptr() as *const LeafHeader)
+            })),
+            _ => Err(LimboError::Corrupt(format!(
+                "Invalid page type: {}",
+                r#type
+            ))),
+        }
+    }
+
+    pub fn cells(&self, buf: &'buf [u8]) -> CellPtrs<'buf> {
+        match self {
+            TreePageHeader::IndexInterior(InteriorHeader {
+                metadata: PageMetadata { cell_count, .. },
+                ..
+            })
+            | TreePageHeader::TableInterior(InteriorHeader {
+                metadata: PageMetadata { cell_count, .. },
+                ..
+            }) => {
+                const start_offset: usize = std::mem::size_of::<InteriorHeader>();
+                let end_offset = start_offset + (*cell_count as usize * 2);
+                if buf.len() < end_offset {
+                    crate::bail_corrupt_error!("Buffer too short for cell pointers");
+                }
+                let bytes = &buf[start_offset..end_offset];
+                let ptrs = unsafe {
+                    // SAFETY: We assume the buffer is valid and aligned for u16.
+                    std::slice::from_raw_parts(bytes.as_ptr() as *const u16, bytes.len() / 2)
+                };
+                CellPtrs { ptrs }
+            }
+            TreePageHeader::IndexLeaf(LeafHeader { cell_count, .. })
+            | TreePageHeader::TableLeaf(LeafHeader { cell_count, .. }) => {
+                let cell_ptrs_start = 8; // header size
+                let cell_ptrs_end = cell_ptrs_start + (*cell_count as usize * 2);
+                let ptrs = &buf[cell_ptrs_start..cell_ptrs_end];
+                CellPtrs { ptrs }
+            }
+        }
+    }
+}
+
+pub struct CellPtrs<'buf> {
+    pub ptrs: &'buf [u16],
+}
+
+// #[repr(C, packed)]
+// struct CommonHeader {
+//     // r#type: PageType,
+//     first_freeblock_offset: u16,
+//     cell_count: u16,
+//     content_start_offset: u16,
+//     frag_free_bytes: u8,
+// }
+
+// #[repr(u8)]
+// enum PageHeader {
+//     IndexInterior {
+//         header: CommonHeader,
+//         rightmost_pointer: u32,
+//     } = 0x02,
+//     TableInterior {
+//         header: CommonHeader,
+//         rightmost_pointer: u32,
+//     } = 0x05,
+//     IndexLeaf(CommonHeader) = 0x0A,
+//     TableLeaf(CommonHeader) = 0x0D,
+// }
+
+// impl PageHeader {
+//     pub fn page_type(&self) -> PageType {
+//         // SAFETY: PageHeader is repr(u8)
+//         let discriminant = unsafe { *<*const _>::from(self).cast::<u8>() };
+//         // SAFETY: PageType is repr(u8) and has the same discriminant as PageHeader
+//         unsafe { std::mem::transmute(discriminant) }
+//     }
+
+//     pub fn data<'a>(&'a self) -> &'a CommonHeader {
+//         match self {
+//             PageHeader::IndexInterior { header, .. } => header,
+//             PageHeader::TableInterior { header, .. } => header,
+//             PageHeader::IndexLeaf(header) => header,
+//             PageHeader::TableLeaf(header) => header,
+//         }
+//     }
+
+//     pub fn data_mut<'a>(&'a mut self) -> &'a mut CommonHeader {
+//         match self {
+//             PageHeader::IndexInterior { header, .. } => header,
+//             PageHeader::TableInterior { header, .. } => header,
+//             PageHeader::IndexLeaf(header) => header,
+//             PageHeader::TableLeaf(header) => header,
+//         }
+//     }
+
+//     pub fn rightmost_pointer(&self) -> Option<u32> {
+//         match self {
+//             PageHeader::IndexInterior {
+//                 rightmost_pointer, ..
+//             }
+//             | PageHeader::TableInterior {
+//                 rightmost_pointer, ..
+//             } => Some(*rightmost_pointer),
+//             _ => None,
+//         }
+//     }
+
+//     pub fn header_size(&self) -> usize {
+//         match self {
+//             PageHeader::IndexInterior { .. } | PageHeader::TableInterior { .. } => 12,
+//             PageHeader::IndexLeaf(_) | PageHeader::TableLeaf(_) => 8,
+//         }
+//     }
+// }
+
 #[derive(Debug)]
 pub struct PageContent {
     pub offset: usize,
@@ -432,14 +589,11 @@ impl PageContent {
     }
 
     pub fn page_type(&self) -> PageType {
-        self.read_u8(0).try_into().unwrap()
+        self.maybe_page_type().unwrap()
     }
 
     pub fn maybe_page_type(&self) -> Option<PageType> {
-        match self.read_u8(0).try_into() {
-            Ok(v) => Some(v),
-            Err(_) => None, // this could be an overflow page
-        }
+        self.as_ptr()[self.offset].try_into().ok()
     }
 
     #[allow(clippy::mut_from_ref)]
@@ -452,50 +606,50 @@ impl PageContent {
         }
     }
 
-    pub fn read_u8(&self, pos: usize) -> u8 {
+    fn read_u8(&self, pos: usize) -> u8 {
         let buf = self.as_ptr();
         buf[self.offset + pos]
     }
 
-    pub fn read_u16(&self, pos: usize) -> u16 {
+    fn read_u16(&self, pos: usize) -> u16 {
         let buf = self.as_ptr();
         u16::from_be_bytes([buf[self.offset + pos], buf[self.offset + pos + 1]])
     }
 
-    pub fn read_u16_no_offset(&self, pos: usize) -> u16 {
+    fn read_u16_no_offset(&self, pos: usize) -> u16 {
         let buf = self.as_ptr();
         u16::from_be_bytes([buf[pos], buf[pos + 1]])
     }
 
-    pub fn read_u32_no_offset(&self, pos: usize) -> u32 {
+    fn read_u32_no_offset(&self, pos: usize) -> u32 {
         let buf = self.as_ptr();
         u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]])
     }
 
-    pub fn read_u32(&self, pos: usize) -> u32 {
+    fn read_u32(&self, pos: usize) -> u32 {
         let buf = self.as_ptr();
         read_u32(buf, self.offset + pos)
     }
 
-    pub fn write_u8(&self, pos: usize, value: u8) {
+    fn write_u8(&self, pos: usize, value: u8) {
         tracing::trace!("write_u8(pos={}, value={})", pos, value);
         let buf = self.as_ptr();
         buf[self.offset + pos] = value;
     }
 
-    pub fn write_u16(&self, pos: usize, value: u16) {
+    fn write_u16(&self, pos: usize, value: u16) {
         tracing::trace!("write_u16(pos={}, value={})", pos, value);
         let buf = self.as_ptr();
         buf[self.offset + pos..self.offset + pos + 2].copy_from_slice(&value.to_be_bytes());
     }
 
-    pub fn write_u16_no_offset(&self, pos: usize, value: u16) {
+    fn write_u16_no_offset(&self, pos: usize, value: u16) {
         tracing::trace!("write_u16(pos={}, value={})", pos, value);
         let buf = self.as_ptr();
         buf[pos..pos + 2].copy_from_slice(&value.to_be_bytes());
     }
 
-    pub fn write_u32(&self, pos: usize, value: u32) {
+    fn write_u32(&self, pos: usize, value: u32) {
         tracing::trace!("write_u32(pos={}, value={})", pos, value);
         let buf = self.as_ptr();
         buf[self.offset + pos..self.offset + pos + 4].copy_from_slice(&value.to_be_bytes());
@@ -566,6 +720,10 @@ impl PageContent {
             PageType::IndexLeaf => None,
             PageType::TableLeaf => None,
         }
+    }
+
+    pub fn update_rightmost_pointer(&self, new_pointer: u32) {
+        todo!()
     }
 
     pub fn rightmost_pointer_raw(&self) -> Option<*mut u8> {
