@@ -1129,16 +1129,6 @@ pub fn op_vnext(
     Ok(InsnFunctionStepResult::Step)
 }
 
-pub fn op_hashjoin(
-    program: &Program,
-    state: &mut ProgramState,
-    insn: &Insn,
-    pager: &Rc<Pager>,
-    mv_store: Option<&Rc<MvStore>>
-) -> Result<InsnFunctionStepResult> {
-    Ok(InsnFunctionStepResult::Step)
-}
-
 pub fn op_vdestroy(
     program: &Program,
     state: &mut ProgramState,
