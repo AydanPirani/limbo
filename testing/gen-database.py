@@ -7,30 +7,32 @@ import random
 conn = sqlite3.connect('database.db')
 cursor = conn.cursor()
 
-# Create tables
-cursor.execute('DROP TABLE IF EXISTS users')
-cursor.execute('''
-    CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        first_name TEXT
-    )
-''')
-
-# Insert users
 fake = Faker()
-for _ in range(10000):
-    cursor.execute('''
-        INSERT INTO users (first_name)
-        VALUES (?)
-    ''', (
-        fake.first_name(),
-    ))
 
-# Get user IDs after inserting
-user_ids = [row[0] for row in cursor.execute('SELECT id FROM users').fetchall()]
+# Create tables
+def create_users(num):
+    tabname = f"users_{num}"
+    cursor.execute(f'DROP TABLE IF EXISTS {tabname}')
+    cursor.execute(f'''
+        CREATE TABLE {tabname} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            first_name TEXT
+        )
+    ''')
 
-def create_orders(num):
-    tabname = f"orders_{num}"
+    # Insert users
+    for _ in range(num):
+        cursor.execute(f'''
+            INSERT INTO {tabname} (first_name)
+            VALUES (?)
+        ''', (fake.first_name(),))
+
+    # Get and return user IDs
+    user_ids = [row[0] for row in cursor.execute(f'SELECT id FROM {tabname}').fetchall()]
+    return user_ids
+
+def create_orders(user_ids, num_users, num):
+    tabname = f"orders_{num_users}_{num}"
     cursor.execute(f'DROP TABLE IF EXISTS {tabname}')
     cursor.execute(f'''
         CREATE TABLE {tabname} (
@@ -50,10 +52,18 @@ def create_orders(num):
             VALUES (?, ?)
         ''', (user_id, product_id))
 
-# TODO: create users
-create_orders(1000)
-create_orders(1000000)
-# create_orders(100000000)
+user_ids_1000 = create_users(1000)
+create_orders(user_ids_1000, 1000, 1000)
+create_orders(user_ids_1000, 1000, 10000)
+create_orders(user_ids_1000, 1000, 100000)
+user_ids_10000 = create_users(10000)
+create_orders(user_ids_10000, 10000, 1000)
+create_orders(user_ids_10000, 10000, 10000)
+create_orders(user_ids_10000, 10000, 100000)
+user_ids_100000 = create_users(100000)
+create_orders(user_ids_100000, 100000, 1000)
+create_orders(user_ids_100000, 100000, 10000)
+create_orders(user_ids_100000, 100000, 100000)
 
 conn.commit()
 conn.close()
