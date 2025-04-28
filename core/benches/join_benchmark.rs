@@ -22,92 +22,143 @@ fn bench_join_query(criterion: &mut Criterion) {
     let db = Database::open_file(io.clone(), "../testing/database.db", false).unwrap();
     let limbo_conn = db.connect().unwrap();
 
-    // Setup tables
-    // TODO: this should theoretically be done once externally
-    // limbo_conn.execute("DROP TABLE IF EXISTS users").unwrap();
-    // limbo_conn.execute("DROP TABLE IF EXISTS orders").unwrap();
-
-    // limbo_conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY)").unwrap();
-    // limbo_conn.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER)").unwrap();
-
-    // for i in 0..10_000 {
-    //     limbo_conn.execute(&format!("INSERT INTO users VALUES ({})", i)).unwrap();
-    //     limbo_conn.execute(&format!("INSERT INTO orders VALUES ({}, {})", i, i)).unwrap();
-    // }
+    let mut group = criterion.benchmark_group("join_query");
 
     // The join query
-    let query = "SELECT u.id, o.id FROM users u JOIN orders o ON u.id = o.user_id";
-
-    let mut group = criterion.benchmark_group("join_query");
-    {
-        let mut stmt = limbo_conn.prepare_hardcoded(query).unwrap();
-        // for (_, c) in stmt.get_program().insns.iter().enumerate() {
-        //     println!("{:?}", c);
-        // }
-        loop {
-            match stmt.step().unwrap() {
-                limbo_core::StepResult::Row => {
-                    black_box(stmt.row());
-                }
-                limbo_core::StepResult::IO => {
-                    let _ = io.run_once();
-                }
-                limbo_core::StepResult::Done => {
-                    break;
-                }
-                limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
-                    unreachable!();
-                }
-            }
-        }
-    }
+    let query = "SELECT o.id, u.first_name, o.product_id FROM users u JOIN orders_1000 o ON u.id = o.user_id";
 
     // Benchmark Limbo execution
-    // group.bench_with_input(
-    //     BenchmarkId::new("limbo_execute", query),
-    //     &query,
-    //     |b, query| {
-    //         let io = io.clone();
-    //         b.iter(|| {
-    //             let mut stmt = limbo_conn.prepare(query).unwrap();
-    //             loop {
-    //                 match stmt.step().unwrap() {
-    //                     limbo_core::StepResult::Row => {
-    //                         black_box(stmt.row());
-    //                     }
-    //                     limbo_core::StepResult::IO => {
-    //                         let _ = io.run_once();
-    //                     }
-    //                     limbo_core::StepResult::Done => {
-    //                         break;
-    //                     }
-    //                     limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
-    //                         unreachable!();
-    //                     }
-    //                 }
-    //             }
-    //             // stmt.reset();
-    //         });
-    //     },
-    // );
-
-    if enable_rusqlite {
-        let sqlite_conn = rusqlite_open();
-
-        group.bench_with_input(
-            BenchmarkId::new("sqlite_execute", query),
-            &query,
-            |b, query| {
-                b.iter(|| {
-                    let mut stmt = sqlite_conn.prepare(query).unwrap();
-                    let mut rows = stmt.query([]).unwrap();
-                    while let Some(row) = rows.next().unwrap() {
-                        black_box(row);
+    group.bench_with_input(
+        BenchmarkId::new("limbo_hashjoin_orders_1000_execute", query),
+        &query,
+        |b, query| {
+            let io = io.clone();
+            b.iter(|| {
+                let mut stmt = limbo_conn.prepare_hardcoded(query).unwrap();
+                loop {
+                    match stmt.step().unwrap() {
+                        limbo_core::StepResult::Row => {
+                            black_box(stmt.row());
+                        }
+                        limbo_core::StepResult::IO => {
+                            let _ = io.run_once();
+                        }
+                        limbo_core::StepResult::Done => {
+                            break;
+                        }
+                        limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
+                            unreachable!();
+                        }
                     }
-                });
-            },
-        );
-    }
+                }
+                // stmt.reset();
+            });
+        },
+    );
+
+    group.bench_with_input(
+        BenchmarkId::new("limbo_orders_1000_execute", query),
+        &query,
+        |b, query| {
+            let io = io.clone();
+            b.iter(|| {
+                let mut stmt = limbo_conn.prepare(query).unwrap();
+                loop {
+                    match stmt.step().unwrap() {
+                        limbo_core::StepResult::Row => {
+                            black_box(stmt.row());
+                        }
+                        limbo_core::StepResult::IO => {
+                            let _ = io.run_once();
+                        }
+                        limbo_core::StepResult::Done => {
+                            break;
+                        }
+                        limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
+                            unreachable!();
+                        }
+                    }
+                }
+                // stmt.reset();
+            });
+        },
+    );
+
+    let query2 = "SELECT o.id, u.first_name, o.product_id FROM users u JOIN orders_1000000 o ON u.id = o.user_id";
+
+    group.bench_with_input(
+        BenchmarkId::new("limbo_hashjoin_orders_1000000_execute", query2),
+        &query2,
+        |b, query2| {
+            let io = io.clone();
+            b.iter(|| {
+                let mut stmt = limbo_conn.prepare_hardcoded(query2).unwrap();
+                loop {
+                    match stmt.step().unwrap() {
+                        limbo_core::StepResult::Row => {
+                            black_box(stmt.row());
+                        }
+                        limbo_core::StepResult::IO => {
+                            let _ = io.run_once();
+                        }
+                        limbo_core::StepResult::Done => {
+                            break;
+                        }
+                        limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
+                            unreachable!();
+                        }
+                    }
+                }
+                // stmt.reset();
+            });
+        },
+    );
+
+    group.bench_with_input(
+        BenchmarkId::new("limbo_orders_1000000_execute", query2),
+        &query2,
+        |b, query2| {
+            let io = io.clone();
+            b.iter(|| {
+                let mut stmt = limbo_conn.prepare(query2).unwrap();
+                loop {
+                    match stmt.step().unwrap() {
+                        limbo_core::StepResult::Row => {
+                            black_box(stmt.row());
+                        }
+                        limbo_core::StepResult::IO => {
+                            let _ = io.run_once();
+                        }
+                        limbo_core::StepResult::Done => {
+                            break;
+                        }
+                        limbo_core::StepResult::Interrupt | limbo_core::StepResult::Busy => {
+                            unreachable!();
+                        }
+                    }
+                }
+                // stmt.reset();
+            });
+        },
+    );
+
+    // if enable_rusqlite {
+    //     let sqlite_conn = rusqlite_open();
+
+    //     group.bench_with_input(
+    //         BenchmarkId::new("sqlite_orders_1000_execute", query),
+    //         &query,
+    //         |b, query| {
+    //             b.iter(|| {
+    //                 let mut stmt = sqlite_conn.prepare(query).unwrap();
+    //                 let mut rows = stmt.query([]).unwrap();
+    //                 while let Some(row) = rows.next().unwrap() {
+    //                     black_box(row);
+    //                 }
+    //             });
+    //         },
+    //     );
+    // }
 
     group.finish();
 }
