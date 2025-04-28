@@ -409,6 +409,8 @@ pub struct PageContent {
     pub offset: usize,
     pub buffer: Arc<RefCell<Buffer>>,
     pub overflow_cells: Vec<OverflowCell>,
+    // Cache certain values to avoid recalculating them multiple times.
+    page_type: Cell<Option<PageType>>,
 }
 
 impl Clone for PageContent {
@@ -418,6 +420,7 @@ impl Clone for PageContent {
             offset: self.offset,
             buffer: Arc::new(RefCell::new((*self.buffer.borrow()).clone())),
             overflow_cells: self.overflow_cells.clone(),
+            page_type: Cell::new(self.page_type.get()),
         }
     }
 }
@@ -428,11 +431,28 @@ impl PageContent {
             offset,
             buffer,
             overflow_cells: Vec::new(),
+            page_type: Cell::new(None),
         }
     }
 
+    pub fn init(&mut self, offset: usize, page_type: PageType, usable_space: u16) {
+        self.offset = offset;
+        self.update_page_type(page_type);
+        self.update_first_freeblock(0);
+        self.update_cell_count(0);
+        self.update_content_area(usable_space);
+        self.update_fragmented_bytes_count(0);
+        self.update_rightmost_pointer(0);
+    }
+
     pub fn page_type(&self) -> PageType {
-        self.read_u8(0).try_into().unwrap()
+        if let Some(page_type) = self.page_type.get() {
+            page_type
+        } else {
+            let page_type = self.read_u8(0).try_into().unwrap();
+            self.page_type.set(Some(page_type));
+            page_type
+        }
     }
 
     pub fn maybe_page_type(&self) -> Option<PageType> {
@@ -452,12 +472,12 @@ impl PageContent {
         }
     }
 
-    pub fn read_u8(&self, pos: usize) -> u8 {
+    fn read_u8(&self, pos: usize) -> u8 {
         let buf = self.as_ptr();
         buf[self.offset + pos]
     }
 
-    pub fn read_u16(&self, pos: usize) -> u16 {
+    fn read_u16(&self, pos: usize) -> u16 {
         let buf = self.as_ptr();
         u16::from_be_bytes([buf[self.offset + pos], buf[self.offset + pos + 1]])
     }
@@ -467,7 +487,7 @@ impl PageContent {
         u16::from_be_bytes([buf[pos], buf[pos + 1]])
     }
 
-    pub fn read_u32_no_offset(&self, pos: usize) -> u32 {
+    fn read_u32_no_offset(&self, pos: usize) -> u32 {
         let buf = self.as_ptr();
         u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]])
     }
@@ -477,13 +497,13 @@ impl PageContent {
         read_u32(buf, self.offset + pos)
     }
 
-    pub fn write_u8(&self, pos: usize, value: u8) {
+    fn write_u8(&self, pos: usize, value: u8) {
         tracing::trace!("write_u8(pos={}, value={})", pos, value);
         let buf = self.as_ptr();
         buf[self.offset + pos] = value;
     }
 
-    pub fn write_u16(&self, pos: usize, value: u16) {
+    fn write_u16(&self, pos: usize, value: u16) {
         tracing::trace!("write_u16(pos={}, value={})", pos, value);
         let buf = self.as_ptr();
         buf[self.offset + pos..self.offset + pos + 2].copy_from_slice(&value.to_be_bytes());
@@ -576,6 +596,52 @@ impl PageContent {
             PageType::IndexLeaf => None,
             PageType::TableLeaf => None,
         }
+    }
+
+    pub fn overflow_next_pointer(&self) -> u32 {
+        self.read_u32_no_offset(0)
+    }
+
+    pub fn update_overflow_next_pointer(&mut self, new_pointer: u32) {
+        self.write_u32(0, new_pointer);
+    }
+
+    pub fn update_rightmost_pointer(&mut self, new_pointer: u32) {
+        self.write_u32(8, new_pointer);
+    }
+
+    fn update_page_type(&mut self, new_page_type: PageType) {
+        self.write_u8(0, new_page_type as u8);
+        self.page_type.set(Some(new_page_type));
+    }
+
+    pub fn update_content_area(&mut self, new_content_area: u16) {
+        self.write_u16(5, new_content_area);
+    }
+
+    pub fn update_cell_count(&mut self, new_count: u16) {
+        self.write_u16(3, new_count);
+    }
+    pub fn update_first_freeblock(&mut self, new_first_freeblock: u16) {
+        self.write_u16(1, new_first_freeblock);
+    }
+    pub fn update_fragmented_bytes_count(&mut self, new_count: u8) {
+        self.write_u8(7, new_count);
+    }
+
+    pub fn leaf_to_interior(&mut self, new_rightmost: u32, new_content_area: u16) {
+        let new_type = match self.page_type() {
+            PageType::IndexLeaf => PageType::IndexInterior,
+            PageType::TableLeaf => PageType::TableInterior,
+            other => other,
+        };
+        self.update_page_type(new_type);
+        self.update_rightmost_pointer(new_rightmost);
+        self.update_content_area(new_content_area);
+        self.update_cell_count(0);
+        self.update_first_freeblock(0);
+        self.update_fragmented_bytes_count(0);
+        self.overflow_cells.clear();
     }
 
     pub fn cell_get(
