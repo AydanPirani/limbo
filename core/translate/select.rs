@@ -41,24 +41,42 @@ pub fn translate_select(
 
     match query_mode {
         QueryMode::Hardcode => {
+            // TODO: unhardcode this...
+            let mut cursor_root_page : [usize; 2] = [0; 2];
+            let mut flag = 0;
+            for (insn, _) in program.insns.iter() {
+                if let Insn::OpenRead { cursor_id, root_page } = insn {
+                    // Only write the first two cursor->page mappings
+                    // For our tests, we don't need more
+                    if *cursor_id < 2 {
+                        cursor_root_page[*cursor_id] = *root_page;
+                        flag |= *cursor_id + 1;
+                        if flag == 3 {
+                            break;
+                        }
+                    }
+                }
+            }
             program.insns = vec![
                 (Insn::Init { target_pc: BranchOffset::Offset(1) }, op_init),
                 (Insn::Transaction { write: false }, op_transaction),
-                (Insn::OpenRead{cursor_id: 0, root_page: 1158}, op_open_read),
-                (Insn::OpenRead{cursor_id: 1, root_page: 1159}, op_open_read),
-                (Insn::Rewind { cursor_id: 0, pc_if_empty: BranchOffset::Offset(14) }, op_rewind),
-                (Insn::Rewind { cursor_id: 1, pc_if_empty: BranchOffset::Offset(14) }, op_rewind),
+                (Insn::OpenRead{cursor_id: 0, root_page: cursor_root_page[0]}, op_open_read),
+                (Insn::OpenRead{cursor_id: 1, root_page: cursor_root_page[1]}, op_open_read),
+                (Insn::Rewind { cursor_id: 0, pc_if_empty: BranchOffset::Offset(15) }, op_rewind),
+                (Insn::Rewind { cursor_id: 1, pc_if_empty: BranchOffset::Offset(15) }, op_rewind),
                 (Insn::RowId { cursor_id: 0, dest: 7 }, op_row_id),
-                (Insn::HashAdd { start_reg: 7, count: 1 }, op_hash_add),
+                (Insn::Column { cursor_id: 0, column: 1, dest: 8 }, op_column),
+                (Insn::HashAdd { start_reg: 7, count: 2 }, op_hash_add),
                 (Insn::Next { cursor_id: 0, pc_if_next: BranchOffset::Offset(6) }, op_next),
-                (Insn::Column { cursor_id: 1, column: 0, dest: 4 }, op_column),
-                (Insn::Column { cursor_id: 1, column: 1, dest: 5 }, op_column),
-                (Insn::HashJoinRow { idx_reg: 5, store_regs: vec![5] }, op_hash_join_row),
-                (Insn::ResultRow { start_reg: 4, count: 2 }, op_result_row),
+                (Insn::Column { cursor_id: 1, column: 0, dest: 3 }, op_column),
+                (Insn::Column { cursor_id: 1, column: 1, dest: 6 }, op_column),
+                (Insn::Column { cursor_id: 1, column: 2, dest: 5 }, op_column),
+                (Insn::HashJoinRow { idx_reg: 6, store_regs: vec![7, 4] }, op_hash_join_row),
+                (Insn::ResultRow { start_reg: 3, count: 3 }, op_result_row),
                 (Insn::Next { cursor_id: 1, pc_if_next: BranchOffset::Offset(9) }, op_next),
                 (Insn::Halt { err_code: 0, description: "".to_string() }, op_halt)
             ];
-            program.next_free_register = 8;
+            program.next_free_register = 9;
         },
         _ => {}
     }
